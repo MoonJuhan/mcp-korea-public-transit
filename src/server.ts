@@ -6,6 +6,16 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 
 const SERVICE_KEY = "ENTER_YOUR_KEY";
+// 버스 정류소 정보 타입 정의
+interface BusStop {
+  stId: string;
+  stNm: string;
+  tmX: string;
+  tmY: string;
+  arsId: string;
+  posX: string;
+  posY: string;
+}
 
 // Create an MCP server
 const server = new McpServer({
@@ -39,16 +49,17 @@ server.registerTool(
       url.searchParams.append("tmX", tmX.toString());
       url.searchParams.append("tmY", tmY.toString());
       url.searchParams.append("radius", radius.toString());
+      url.searchParams.append("resultType", "json");
 
       const response = await fetch(url.toString());
-      const xmlText = await response.text();
+      const responseText = await response.text();
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      // XML 응답을 파싱하여 JSON으로 변환
-      const busStops = parseXmlResponse(xmlText);
+      // JSON 응답을 파싱
+      const busStops = parseApiResponse(responseText);
 
       return {
         content: [
@@ -56,7 +67,7 @@ server.registerTool(
             type: "text",
             text: `검색 결과: ${busStops.length}개의 버스 정류소를 찾았습니다.\n\n${busStops
               .map(
-                (stop) =>
+                (stop: BusStop) =>
                   `• ${stop.stNm} (${stop.arsId})\n  위치: X=${stop.tmX}, Y=${stop.tmY}\n  정류소ID: ${stop.stId}`
               )
               .join("\n\n")}`,
@@ -92,17 +103,18 @@ server.registerTool(
         "http://ws.bus.go.kr/api/rest/stationinfo/getStationByName"
       );
       url.searchParams.append("serviceKey", SERVICE_KEY);
-      url.searchParams.append("stSrch", encodeURIComponent(stSrch));
+      url.searchParams.append("stSrch", stSrch);
+      url.searchParams.append("resultType", "json");
 
       const response = await fetch(url.toString());
-      const xmlText = await response.text();
+      const responseText = await response.text();
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      // XML 응답을 파싱하여 JSON으로 변환
-      const busStops = parseXmlResponse(xmlText);
+      // JSON 응답을 파싱
+      const busStops = parseApiResponse(responseText);
 
       return {
         content: [
@@ -110,7 +122,7 @@ server.registerTool(
             type: "text",
             text: `"${stSrch}" 검색 결과: ${busStops.length}개의 버스 정류소를 찾았습니다.\n\n${busStops
               .map(
-                (stop) =>
+                (stop: BusStop) =>
                   `• ${stop.stNm} (${stop.arsId})\n  위치: X=${stop.tmX}, Y=${stop.tmY}\n  정류소ID: ${stop.stId}\n  좌표(GRS80): ${stop.posX}, ${stop.posY}`
               )
               .join("\n\n")}`,
@@ -130,45 +142,38 @@ server.registerTool(
   }
 );
 
-// XML 응답을 파싱하는 함수
-function parseXmlResponse(xmlText: string) {
-  const busStops: any[] = [];
+// API 응답을 파싱하는 함수 (JSON 형태로 응답받음)
+function parseApiResponse(responseText: string): BusStop[] {
+  const busStops: BusStop[] = [];
 
-  // 간단한 XML 파싱 (실제 프로덕션에서는 xml2js 같은 라이브러리 사용 권장)
-  const stationMatches = xmlText.match(/<stationList>[\s\S]*?<\/stationList>/g);
+  try {
+    const jsonResponse = JSON.parse(responseText);
+    
+    // 응답 구조: msgBody.itemList
+    if (jsonResponse?.msgBody?.itemList) {
+      const items = jsonResponse.msgBody.itemList;      // itemList가 배열인지 단일 객체인지 확인
+      const itemArray = Array.isArray(items) ? items : [items];
 
-  if (stationMatches) {
-    stationMatches.forEach((stationXml) => {
-      const stId = extractXmlValue(stationXml, "stId");
-      const stNm = extractXmlValue(stationXml, "stNm");
-      const tmX = extractXmlValue(stationXml, "tmX");
-      const tmY = extractXmlValue(stationXml, "tmY");
-      const arsId = extractXmlValue(stationXml, "arsId");
-      const posX = extractXmlValue(stationXml, "posX");
-      const posY = extractXmlValue(stationXml, "posY");
-
-      if (stId && stNm) {
-        busStops.push({
-          stId,
-          stNm,
-          tmX: tmX || "",
-          tmY: tmY || "",
-          arsId: arsId || "",
-          posX: posX || "",
-          posY: posY || "",
-        });
-      }
-    });
+      itemArray.forEach((item: any) => {
+        if (item.stId && item.stNm) {
+          busStops.push({
+            stId: item.stId || "",
+            stNm: item.stNm || "",
+            tmX: item.tmX || "",
+            tmY: item.tmY || "",
+            arsId: item.arsId || "",
+            posX: item.posX || "",
+            posY: item.posY || "",
+          });
+        }
+      });
+    }
+  } catch (error) {
+    console.error("JSON 파싱 오류:", error);
+    // JSON 파싱 실패 시 빈 배열 반환
   }
 
   return busStops;
-}
-
-// XML에서 특정 태그의 값을 추출하는 함수
-function extractXmlValue(xml: string, tagName: string): string | null {
-  const regex = new RegExp(`<${tagName}[^>]*>([^<]*)<\/${tagName}>`, "i");
-  const match = xml.match(regex);
-  return match ? match[1].trim() : null;
 }
 
 // 버스 정류소 정보 리소스
