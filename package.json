@@ -1,18 +1,19 @@
 {
   "name": "mcp-korea-public-transit",
   "version": "1.0.0",
-  "description": "",
+  "description": "서울특별시 공공데이터포털의 정류소정보조회 API를 활용한 MCP 서버",
   "license": "ISC",
   "author": "",
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
-    "build": "tsc -p tsconfig.json",
-    "start": "node build/server.js"
+    "dev": "source .env 2>/dev/null || true && tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.17.4"
+    "@modelcontextprotocol/sdk": "^1.17.4",
+    "dotenv": "^17.2.1",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
