@@ -155,12 +155,16 @@ function parseApiResponse(responseText: string): BusStop[] {
       const itemArray = Array.isArray(items) ? items : [items];
 
       itemArray.forEach((item: any) => {
-        if (item.stId && item.stNm) {
+        // API 응답의 실제 필드명 확인: stationId, stationNm (위치 검색) 또는 stId, stNm (이름 검색)
+        const stationId = item.stationId || item.stId;
+        const stationName = item.stationNm || item.stNm;
+        
+        if (stationId && stationName) {
           busStops.push({
-            stId: item.stId || "",
-            stNm: item.stNm || "",
-            tmX: item.tmX || "",
-            tmY: item.tmY || "",
+            stId: stationId,
+            stNm: stationName,
+            tmX: item.tmX || item.gpsX || "",
+            tmY: item.tmY || item.gpsY || "",
             arsId: item.arsId || "",
             posX: item.posX || "",
             posY: item.posY || "",
