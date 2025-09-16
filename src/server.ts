@@ -2,10 +2,15 @@ import {
   McpServer,
   ResourceTemplate,
 } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { z } from "zod";
+import express from "express";
+import cors from "cors";
+import dotenv from "dotenv";
 
-const SERVICE_KEY = "ENTER_YOUR_KEY";
+// 환경변수 로드
+dotenv.config();
+
 // 버스 정류소 정보 타입 정의
 interface BusStop {
   stId: string;
@@ -16,6 +21,8 @@ interface BusStop {
   posX: string;
   posY: string;
 }
+
+const SERVICE_KEY = "ENTER_YOUR_KEY";
 
 // Create an MCP server
 const server = new McpServer({
@@ -148,17 +155,17 @@ function parseApiResponse(responseText: string): BusStop[] {
 
   try {
     const jsonResponse = JSON.parse(responseText);
-    
+
     // 응답 구조: msgBody.itemList
     if (jsonResponse?.msgBody?.itemList) {
-      const items = jsonResponse.msgBody.itemList;      // itemList가 배열인지 단일 객체인지 확인
+      const items = jsonResponse.msgBody.itemList; // itemList가 배열인지 단일 객체인지 확인
       const itemArray = Array.isArray(items) ? items : [items];
 
       itemArray.forEach((item: any) => {
         // API 응답의 실제 필드명 확인: stationId, stationNm (위치 검색) 또는 stId, stNm (이름 검색)
         const stationId = item.stationId || item.stId;
         const stationName = item.stationNm || item.stNm;
-        
+
         if (stationId && stationName) {
           busStops.push({
             stId: stationId,
@@ -199,53 +206,116 @@ server.registerResource(
 );
 
 const runServer = async () => {
-  const transport = new StdioServerTransport();
+  const app = express();
+  const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
+  const HOST = process.env.HOST || "localhost";
 
-  // EPIPE 에러 처리를 위한 이벤트 리스너 추가
-  process.stdout.on("error", (err: any) => {
-    if (err.code === "EPIPE") {
-      // 클라이언트가 연결을 끊었을 때 발생하는 정상적인 상황
-      process.exit(0);
-    } else {
-      process.stderr.write(`stdout error: ${err.message}\n`);
-      process.exit(1);
-    }
-  });
+  // CORS 설정
+  app.use(
+    cors({
+      origin: true,
+      credentials: true,
+    })
+  );
 
-  process.stdin.on("error", (err: any) => {
-    if (err.code === "EPIPE") {
-      process.exit(0);
-    } else {
-      process.stderr.write(`stdin error: ${err.message}\n`);
-      process.exit(1);
-    }
-  });
+  app.use(express.json());
 
-  try {
+  // SSE 엔드포인트
+  app.get("/sse", async (req, res) => {
+    console.log("SSE connection established");
+
+    // SSE 헤더 설정
+    res.writeHead(200, {
+      "Content-Type": "text/plain",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Headers": "Cache-Control",
+    });
+
+    const transport = new SSEServerTransport("/message", res);
+
     await server.connect(transport);
-  } catch (error: any) {
-    if (
-      error.code === "EPIPE" ||
-      (error instanceof Error && error.message.includes("EPIPE"))
-    ) {
-      // 정상적인 연결 종료
-      process.exit(0);
-    } else {
-      process.stderr.write(`Server connection error: ${error}\n`);
-      process.exit(1);
-    }
-  }
+
+    // 연결 종료 처리
+    req.on("close", () => {
+      console.log("SSE connection closed");
+    });
+  });
+
+  // 헬스 체크 엔드포인트
+  app.get("/health", (req, res) => {
+    res.json({
+      status: "ok",
+      server: "mcp-korea-public-transit-server",
+      version: "1.0.0",
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  // 정적 파일 제공 (선택사항)
+  app.get("/", (req, res) => {
+    res.send(`
+      <html>
+        <head>
+          <title>Korea Public Transit MCP Server</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+            .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+            h1 { color: #333; }
+            .endpoint { background: #f8f9fa; padding: 15px; margin: 10px 0; border-radius: 5px; border-left: 4px solid #007bff; }
+            .endpoint a { color: #007bff; text-decoration: none; font-weight: bold; }
+            .endpoint a:hover { text-decoration: underline; }
+            .info { color: #666; margin-top: 20px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h1>🚌 Korea Public Transit MCP Server</h1>
+            <p>서울특별시 공공데이터포털의 정류소정보조회 API를 활용한 MCP 서버입니다.</p>
+            
+            <div class="endpoint">
+              <strong>SSE Endpoint:</strong> <a href="/sse">/sse</a>
+              <br><small>MCP 클라이언트 연결을 위한 Server-Sent Events 엔드포인트</small>
+            </div>
+            
+            <div class="endpoint">
+              <strong>Health Check:</strong> <a href="/health">/health</a>
+              <br><small>서버 상태 확인</small>
+            </div>
+            
+            <div class="info">
+              <p><strong>서버 정보:</strong></p>
+              <ul>
+                <li>포트: ${PORT}</li>
+                <li>호스트: ${HOST}</li>
+                <li>버전: 1.0.0</li>
+                <li>전송 방식: SSE (Server-Sent Events)</li>
+              </ul>
+              
+              <p><strong>사용 가능한 도구:</strong></p>
+              <ul>
+                <li><code>get_bus_stops_by_location</code> - 위치 기반 정류소 검색</li>
+                <li><code>search_bus_stops_by_name</code> - 이름 기반 정류소 검색</li>
+              </ul>
+            </div>
+          </div>
+        </body>
+      </html>
+    `);
+  });
+
+  app.listen(PORT, HOST, () => {
+    console.log(`🚀 MCP Server running on http://${HOST}:${PORT}`);
+    console.log(`📡 SSE endpoint: http://${HOST}:${PORT}/sse`);
+    console.log(`❤️  Health check: http://${HOST}:${PORT}/health`);
+    console.log(
+      `🔑 Service Key: ${SERVICE_KEY ? "Configured" : "Not configured"}`
+    );
+  });
 };
 
 runServer().catch((error: any) => {
-  if (
-    error.code === "EPIPE" ||
-    (error instanceof Error && error.message.includes("EPIPE"))
-  ) {
-    // 정상적인 연결 종료
-    process.exit(0);
-  } else {
-    process.stderr.write(`Fatal error running server: ${error}\n`);
-    process.exit(1);
-  }
+  console.error(`Fatal error running server: ${error}`);
+  process.exit(1);
 });

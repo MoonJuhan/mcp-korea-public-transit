@@ -7,15 +7,22 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "dev": "source .env 2>/dev/null || true && tsx watch src/server.ts",
+    "dev": "source .env 2>/dev/null || true && npx tsx watch src/server.ts",
+    "start": "npm run build && node dist/server.js",
+    "start:sse": "source .env 2>/dev/null || true && npx tsx src/server.ts",
+    "dev:sse": "source .env 2>/dev/null || true && npx tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.17.4",
+    "@modelcontextprotocol/sdk": "^1.18.0",
+    "cors": "^2.8.5",
     "dotenv": "^17.2.1",
+    "express": "^5.1.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
     "@types/node": "^24.3.0",
     "prettier": "^3.6.2",
     "tsx": "^4.16.0",
