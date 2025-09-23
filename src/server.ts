@@ -22,6 +22,25 @@ interface BusStop {
   posY: string;
 }
 
+// 지하철역 정보 타입 정의
+interface SubwayStation {
+  subwayStationId: string;
+  subwayStationName: string;
+  subwayRouteName: string;
+  x: string;
+  y: string;
+}
+
+// 통합 대중교통 정보 타입
+interface TransitStop {
+  type: "bus" | "subway";
+  id: string;
+  name: string;
+  x: string;
+  y: string;
+  additionalInfo?: string; // 버스: arsId, 지하철: 노선명
+}
+
 const SERVICE_KEY = "ENTER_YOUR_KEY";
 
 // Create an MCP server
@@ -94,44 +113,48 @@ server.registerTool(
   }
 );
 
-// 서울시 버스 정류소 이름 검색 도구
+// 대중교통 통합 이름 검색
 server.registerTool(
-  "search_bus_stops_by_name",
+  "search_transit_stops_by_name",
   {
-    title: "서울시 버스 정류소 이름 검색",
-    description: "정류소명을 기준으로 버스 정류소 정보를 조회합니다",
+    title: "대중교통 정류소/역 이름 검색",
+    description:
+      "정류소명 또는 지하철역명을 기준으로 버스 정류소와 지하철역 정보를 통합 조회합니다",
     inputSchema: {
-      stSrch: z.string().describe("검색할 정류소명"),
+      searchTerm: z.string().describe("검색할 정류소명 또는 지하철역명"),
     },
   },
-  async ({ stSrch }) => {
+  async ({ searchTerm }) => {
+    const results: TransitStop[] = [];
+
     try {
-      const url = new URL(
-        "http://ws.bus.go.kr/api/rest/stationinfo/getStationByName"
-      );
-      url.searchParams.append("serviceKey", SERVICE_KEY);
-      url.searchParams.append("stSrch", stSrch);
-      url.searchParams.append("resultType", "json");
+      // 버스 정류소와 지하철역을 동시에 검색
+      const [busStops, subwayStations] = await Promise.all([
+        searchBusStops(searchTerm).catch((error) => {
+          console.error("버스 정류소 검색 오류:", error);
+          return [];
+        }),
+        searchSubwayStations(searchTerm).catch((error) => {
+          console.error("지하철역 검색 오류:", error);
+          return [];
+        }),
+      ]);
 
-      const response = await fetch(url.toString());
-      const responseText = await response.text();
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      // JSON 응답을 파싱
-      const busStops = parseApiResponse(responseText);
+      // 결과 합치기
+      results.push(...busStops, ...subwayStations);
 
       return {
         content: [
           {
             type: "text",
-            text: `"${stSrch}" 검색 결과: ${busStops.length}개의 버스 정류소를 찾았습니다.\n\n${busStops
-              .map(
-                (stop: BusStop) =>
-                  `• ${stop.stNm} (${stop.arsId})\n  위치: X=${stop.tmX}, Y=${stop.tmY}\n  정류소ID: ${stop.stId}\n  좌표(GRS80): ${stop.posX}, ${stop.posY}`
-              )
+            text: `"${searchTerm}" 검색 결과: 총 ${results.length}개의 대중교통 정류소/역을 찾았습니다.\n\n${results
+              .map((stop) => {
+                if (stop.type === "bus") {
+                  return `🚌 ${stop.name} (${stop.additionalInfo})\n   위치: X=${stop.x}, Y=${stop.y}\n   정류소ID: ${stop.id}`;
+                } else {
+                  return `🚇 ${stop.name}\n   노선: ${stop.additionalInfo}\n   역ID: ${stop.id}`;
+                }
+              })
               .join("\n\n")}`,
           },
         ],
@@ -185,6 +208,101 @@ function parseApiResponse(responseText: string): BusStop[] {
   }
 
   return busStops;
+}
+
+// 버스 정류소 검색 헬퍼 함수
+async function searchBusStops(searchTerm: string): Promise<TransitStop[]> {
+  const url = new URL(
+    "http://ws.bus.go.kr/api/rest/stationinfo/getStationByName"
+  );
+  url.searchParams.append("serviceKey", SERVICE_KEY);
+  url.searchParams.append("stSrch", searchTerm);
+  url.searchParams.append("resultType", "json");
+
+  const response = await fetch(url.toString());
+  const responseText = await response.text();
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  const busStops = parseApiResponse(responseText);
+
+  return busStops.map(
+    (stop): TransitStop => ({
+      type: "bus",
+      id: stop.stId,
+      name: stop.stNm,
+      x: stop.tmX || stop.posX,
+      y: stop.tmY || stop.posY,
+      additionalInfo: stop.arsId,
+    })
+  );
+}
+
+// 지하철역 검색 헬퍼 함수
+async function searchSubwayStations(
+  searchTerm: string
+): Promise<TransitStop[]> {
+  const url = new URL(
+    "http://apis.data.go.kr/1613000/SubwayInfoService/getKwrdFndSubwaySttnList"
+  );
+  url.searchParams.append("serviceKey", SERVICE_KEY);
+  url.searchParams.append("numOfRows", "100");
+  url.searchParams.append("_type", "json");
+  url.searchParams.append("subwayStationName", searchTerm);
+
+  const response = await fetch(url.toString());
+  const responseText = await response.text();
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  const subwayStations = parseSubwayApiResponse(responseText);
+
+  return subwayStations.map(
+    (station): TransitStop => ({
+      type: "subway",
+      id: station.subwayStationId,
+      name: station.subwayStationName,
+      x: station.x,
+      y: station.y,
+      additionalInfo: station.subwayRouteName,
+    })
+  );
+}
+
+// 지하철 API 응답을 파싱하는 함수
+function parseSubwayApiResponse(responseText: string): SubwayStation[] {
+  const subwayStations: SubwayStation[] = [];
+
+  try {
+    const jsonResponse = JSON.parse(responseText);
+
+    // 지하철 API 응답 구조: response.body.items.item
+    if (jsonResponse?.response?.body?.items?.item) {
+      const items = jsonResponse.response.body.items.item;
+      const itemArray = Array.isArray(items) ? items : [items];
+
+      itemArray.forEach((item: any) => {
+        if (item.subwayStationId && item.subwayStationName) {
+          subwayStations.push({
+            subwayStationId: item.subwayStationId,
+            subwayStationName: item.subwayStationName,
+            subwayRouteName: item.subwayRouteName || "",
+            x: item.x || "",
+            y: item.y || "",
+          });
+        }
+      });
+    }
+  } catch (error) {
+    console.error("지하철 JSON 파싱 오류:", error);
+    // JSON 파싱 실패 시 빈 배열 반환
+  }
+
+  return subwayStations;
 }
 
 // 버스 정류소 정보 리소스
