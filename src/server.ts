@@ -3,13 +3,14 @@ import {
   ResourceTemplate,
 } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 
 // 환경변수 로드
-dotenv.config();
+dotenv.config({ quiet: true });
 
 // 버스 정류소 정보 타입 정의
 interface BusStop {
@@ -131,11 +132,9 @@ server.registerTool(
       // 버스 정류소와 지하철역을 동시에 검색
       const [busStops, subwayStations] = await Promise.all([
         searchBusStops(searchTerm).catch((error) => {
-          console.error("버스 정류소 검색 오류:", error);
           return [];
         }),
         searchSubwayStations(searchTerm).catch((error) => {
-          console.error("지하철역 검색 오류:", error);
           return [];
         }),
       ]);
@@ -203,7 +202,6 @@ function parseApiResponse(responseText: string): BusStop[] {
       });
     }
   } catch (error) {
-    console.error("JSON 파싱 오류:", error);
     // JSON 파싱 실패 시 빈 배열 반환
   }
 
@@ -298,7 +296,6 @@ function parseSubwayApiResponse(responseText: string): SubwayStation[] {
       });
     }
   } catch (error) {
-    console.error("지하철 JSON 파싱 오류:", error);
     // JSON 파싱 실패 시 빈 배열 반환
   }
 
@@ -324,6 +321,21 @@ server.registerResource(
 );
 
 const runServer = async () => {
+  // 실행 모드 판단
+  const isStdioMode =
+    process.argv.includes("--stdio") ||
+    process.env.MCP_MODE === "stdio" ||
+    !process.env.PORT;
+
+  if (isStdioMode) {
+    // stdio 모드로 실행 (출력 제거)
+    const transport = new StdioServerTransport();
+    await server.connect(transport);
+    return;
+  }
+
+  // SSE 모드로 실행
+  console.error("🌐 Starting MCP server in SSE mode...");
   const app = express();
   const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
   const HOST = process.env.HOST || "localhost";
@@ -340,7 +352,10 @@ const runServer = async () => {
 
   // SSE 엔드포인트
   app.get("/sse", async (req, res) => {
-    console.log("SSE connection established");
+    // stdio 모드가 아닐 때만 로그 출력
+    if (!isStdioMode) {
+      console.log("SSE connection established");
+    }
 
     // SSE 헤더 설정
     res.writeHead(200, {
@@ -357,7 +372,10 @@ const runServer = async () => {
 
     // 연결 종료 처리
     req.on("close", () => {
-      console.log("SSE connection closed");
+      // stdio 모드가 아닐 때만 로그 출력
+      if (!isStdioMode) {
+        console.log("SSE connection closed");
+      }
     });
   });
 
@@ -434,6 +452,14 @@ const runServer = async () => {
 };
 
 runServer().catch((error: any) => {
-  console.error(`Fatal error running server: ${error}`);
+  // stdio 모드가 아닐 때만 에러 출력
+  const isStdioMode =
+    process.argv.includes("--stdio") ||
+    process.env.MCP_MODE === "stdio" ||
+    !process.env.PORT;
+
+  if (!isStdioMode) {
+    console.error(`Fatal error running server: ${error}`);
+  }
   process.exit(1);
 });

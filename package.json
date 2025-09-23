@@ -7,10 +7,12 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "dev": "source .env 2>/dev/null || true && npx tsx watch src/server.ts",
-    "start": "npm run build && node dist/server.js",
-    "start:sse": "source .env 2>/dev/null || true && npx tsx src/server.ts",
-    "dev:sse": "source .env 2>/dev/null || true && npx tsx watch src/server.ts",
+    "dev": "npx tsx src/server.ts --stdio",
+    "dev:stdio": "npx tsx src/server.ts --stdio",
+    "dev:sse": "PORT=3000 npx tsx src/server.ts",
+    "start": "npm run build && node dist/server.js --stdio",
+    "start:stdio": "npm run build && node dist/server.js --stdio",
+    "start:sse": "PORT=3000 npm run build && node dist/server.js",
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
