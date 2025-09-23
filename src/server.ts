@@ -314,7 +314,7 @@ server.registerResource(
     contents: [
       {
         uri: uri.href,
-        text: `정류소 ID: ${stationId}\n사용법: get_bus_stops_by_location 또는 search_bus_stops_by_name 도구를 사용하여 정류소 정보를 조회하세요.`,
+        text: `정류소 ID: ${stationId}\n사용법: get_bus_stops_by_location 또는 search_transit_stops_by_name 도구를 사용하여 정류소 정보를 조회하세요.`,
       },
     ],
   })
@@ -447,12 +447,13 @@ const runServer = async () => {
             .endpoint a { color: #007bff; text-decoration: none; font-weight: bold; }
             .endpoint a:hover { text-decoration: underline; }
             .info { color: #666; margin-top: 20px; }
+            .mode { background: #28a745; color: white; padding: 5px 10px; border-radius: 3px; font-size: 12px; }
           </style>
         </head>
         <body>
           <div class="container">
-            <h1>🚌 Korea Public Transit MCP Server</h1>
-            <p>서울특별시 공공데이터포털의 정류소정보조회 API를 활용한 MCP 서버입니다.</p>
+            <h1>🚌 Korea Public Transit MCP Server <span class="mode">SSE Mode</span></h1>
+            <p>공공데이터포털의 정류소정보조회 API와 지하철역정보 API를 활용한 MCP 서버입니다.</p>
             
             <div class="endpoint">
               <strong>SSE Endpoint:</strong> <a href="/sse">/sse</a>
@@ -475,8 +476,27 @@ const runServer = async () => {
               
               <p><strong>사용 가능한 도구:</strong></p>
               <ul>
-                <li><code>get_bus_stops_by_location</code> - 위치 기반 정류소 검색</li>
-                <li><code>search_bus_stops_by_name</code> - 이름 기반 정류소 검색</li>
+                <li><code>get_bus_stops_by_location</code> - 위치 기반 버스 정류소 검색</li>
+                <li><code>search_transit_stops_by_name</code> - 이름 기반 대중교통(버스/지하철) 통합 검색</li>
+              </ul>
+              
+              <p><strong>사용 가능한 리소스:</strong></p>
+              <ul>
+                <li><code>bus_station://{stationId}</code> - 버스 정류소 정보</li>
+                <li><code>subway_station://{stationId}</code> - 지하철역 정보</li>
+                <li><code>transit://{type}/{stopId}</code> - 통합 대중교통 정보</li>
+              </ul>
+              
+              <p><strong>실행 모드:</strong></p>
+              <ul>
+                <li><strong>SSE 모드 (현재):</strong> <code>PORT=3000 npm run dev:sse</code></li>
+                <li><strong>stdio 모드:</strong> <code>npm run dev:stdio</code> 또는 <code>npm run dev:stdio --stdio</code></li>
+              </ul>
+              
+              <p><strong>Claude Desktop 연결:</strong></p>
+              <ul>
+                <li>SSE 모드: <code>{"url": "http://localhost:3000/sse"}</code></li>
+                <li>stdio 모드: <code>{"command": "npx", "args": ["tsx", "path/to/server.ts", "--stdio"]}</code></li>
               </ul>
             </div>
           </div>
