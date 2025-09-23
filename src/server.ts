@@ -320,6 +320,50 @@ server.registerResource(
   })
 );
 
+// 지하철역 정보 리소스
+server.registerResource(
+  "subway_station_info",
+  new ResourceTemplate("subway_station://{stationId}", { list: undefined }),
+  {
+    title: "지하철역 정보",
+    description: "지하철역 ID로 상세 정보 조회",
+  },
+  async (uri, { stationId }) => ({
+    contents: [
+      {
+        uri: uri.href,
+        text: `지하철역 ID: ${stationId}\n사용법: search_transit_stops_by_name 도구를 사용하여 지하철역 정보를 조회하세요.`,
+      },
+    ],
+  })
+);
+
+// 통합 대중교통 정보 리소스
+server.registerResource(
+  "transit_stop_info",
+  new ResourceTemplate("transit://{type}/{stopId}", { list: undefined }),
+  {
+    title: "대중교통 정류소/역 정보",
+    description: "버스 정류소 또는 지하철역의 통합 정보 조회",
+  },
+  async (uri, { type, stopId }) => {
+    const stopType =
+      type === "bus"
+        ? "버스 정류소"
+        : type === "subway"
+          ? "지하철역"
+          : "알 수 없는 교통수단";
+    return {
+      contents: [
+        {
+          uri: uri.href,
+          text: `${stopType} ID: ${stopId}\n교통수단 타입: ${type}\n\n사용법:\n- get_bus_stops_by_location: 위치 기반 버스 정류소 검색\n- search_transit_stops_by_name: 이름 기반 대중교통 통합 검색`,
+        },
+      ],
+    };
+  }
+);
+
 const runServer = async () => {
   // 실행 모드 판단
   const isStdioMode =
