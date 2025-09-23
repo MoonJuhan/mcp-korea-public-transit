@@ -42,7 +42,7 @@ interface TransitStop {
   additionalInfo?: string; // 버스: arsId, 지하철: 노선명
 }
 
-const SERVICE_KEY = "ENTER_YOUR_KEY";
+const SERVICE_KEY = process.env.SERVICE_KEY || '';
 
 // Create an MCP server
 const server = new McpServer({
