@@ -8,9 +8,31 @@ import { z } from "zod";
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import path from "node:path";
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 
-// 환경변수 로드
-dotenv.config({ quiet: true });
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const candidateEnvPaths = [
+  path.resolve(__dirname, "../.env"),
+  path.resolve(process.cwd(), ".env"),
+];
+
+const existingEnvPaths = candidateEnvPaths.filter((p) => {
+  try {
+    return fs.existsSync(p);
+  } catch {
+    return false;
+  }
+});
+
+if (existingEnvPaths.length > 0) {
+  dotenv.config({ path: existingEnvPaths, quiet: true, override: false });
+} else {
+  dotenv.config({ quiet: true, override: false });
+}
 
 // 버스 정류소 정보 타입 정의
 interface BusStop {
@@ -42,7 +64,12 @@ interface TransitStop {
   additionalInfo?: string; // 버스: arsId, 지하철: 노선명
 }
 
-const SERVICE_KEY = process.env.SERVICE_KEY || '';
+const SERVICE_KEY = process.env.SERVICE_KEY || "";
+if (!SERVICE_KEY) {
+  console.error(
+    "[mcp-env] WARNING: SERVICE_KEY is empty; check your .env(.local) or launcher config."
+  );
+}
 
 // Create an MCP server
 const server = new McpServer({
